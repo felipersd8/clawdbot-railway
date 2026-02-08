@@ -37,12 +37,7 @@ function getEnvWithShim(primaryKey, deprecatedKey) {
 // reliably listen on 8080 unless explicitly overridden.
 //
 // Prefer OPENCLAW_PUBLIC_PORT (set in the Dockerfile / template) over PORT.
-const PORT = Number.parseInt(
-  getEnvWithShim("OPENCLAW_PUBLIC_PORT", "CLAWDBOT_PUBLIC_PORT") ??
-    process.env.PORT ??
-    "8080",
-  10,
-);
+const PORT = Number(process.env.PORT || 8080);
 
 // State/workspace
 // OpenClaw defaults to ~/.openclaw.
