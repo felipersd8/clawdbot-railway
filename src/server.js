@@ -37,7 +37,7 @@ function getEnvWithShim(primaryKey, deprecatedKey) {
 // reliably listen on 8080 unless explicitly overridden.
 //
 // Prefer OPENCLAW_PUBLIC_PORT (set in the Dockerfile / template) over PORT.
-const PORT = Number(process.env.PORT || 8080);
+const PORT = Number(process.env.OPENCLAW_PUBLIC_PORT || process.env.PORT || 8080);
 
 // State/workspace
 // OpenClaw defaults to ~/.openclaw.
@@ -83,7 +83,10 @@ const OPENCLAW_GATEWAY_TOKEN = resolveGatewayToken();
 process.env.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_TOKEN;
 
 // Where the gateway will listen internally (we proxy to it).
-const INTERNAL_GATEWAY_PORT = Number.parseInt(process.env.INTERNAL_GATEWAY_PORT ?? "18789", 10);
+const INTERNAL_GATEWAY_PORT = Number.parseInt(
+  process.env.INTERNAL_GATEWAY_PORT ?? "18789",
+  10,
+);
 const INTERNAL_GATEWAY_HOST = process.env.INTERNAL_GATEWAY_HOST ?? "127.0.0.1";
 const GATEWAY_TARGET = `http://${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`;
 
@@ -123,7 +126,7 @@ async function waitForGatewayReady(opts = {}) {
   while (Date.now() - start < timeoutMs) {
     try {
       // Try the default Control UI base path, then fall back to legacy or root.
-      const paths = ["/openclaw", "/clawdbot", "/"]; 
+      const paths = ["/openclaw", "/clawdbot", "/"];
       for (const p of paths) {
         try {
           const res = await fetch(`${GATEWAY_TARGET}${p}`, { method: "GET" });
@@ -218,7 +221,9 @@ function requireSetupAuth(req, res, next) {
     return res
       .status(500)
       .type("text/plain")
-      .send("SETUP_PASSWORD is not set. Set it in Railway Variables before using /setup.");
+      .send(
+        "SETUP_PASSWORD is not set. Set it in Railway Variables before using /setup.",
+      );
   }
 
   const header = req.headers.authorization || "";
@@ -247,7 +252,9 @@ app.get("/setup/healthz", (_req, res) => res.json({ ok: true }));
 app.get("/setup/app.js", requireSetupAuth, (_req, res) => {
   // Serve JS for /setup (kept external to avoid inline encoding/template issues)
   res.type("application/javascript");
-  res.send(fs.readFileSync(path.join(process.cwd(), "src", "setup-app.js"), "utf8"));
+  res.send(
+    fs.readFileSync(path.join(process.cwd(), "src", "setup-app.js"), "utf8"),
+  );
 });
 
 app.get("/setup", requireSetupAuth, (_req, res) => {
@@ -383,56 +390,114 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
 
 app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
   const version = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
-  const channelsHelp = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "add", "--help"]));
+  const channelsHelp = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["channels", "add", "--help"]),
+  );
 
   // We reuse OpenClaw's own auth-choice grouping logic indirectly by hardcoding the same group defs.
   // This is intentionally minimal; later we can parse the CLI help output to stay perfectly in sync.
   const authGroups = [
-    { value: "openai", label: "OpenAI", hint: "Codex OAuth + API key", options: [
-      { value: "codex-cli", label: "OpenAI Codex OAuth (Codex CLI)" },
-      { value: "openai-codex", label: "OpenAI Codex (ChatGPT OAuth)" },
-      { value: "openai-api-key", label: "OpenAI API key" }
-    ]},
-    { value: "anthropic", label: "Anthropic", hint: "Claude Code CLI + API key", options: [
-      { value: "claude-cli", label: "Anthropic token (Claude Code CLI)" },
-      { value: "token", label: "Anthropic token (paste setup-token)" },
-      { value: "apiKey", label: "Anthropic API key" }
-    ]},
-    { value: "google", label: "Google", hint: "Gemini API key + OAuth", options: [
-      { value: "gemini-api-key", label: "Google Gemini API key" },
-      { value: "google-antigravity", label: "Google Antigravity OAuth" },
-      { value: "google-gemini-cli", label: "Google Gemini CLI OAuth" }
-    ]},
-    { value: "openrouter", label: "OpenRouter", hint: "API key", options: [
-      { value: "openrouter-api-key", label: "OpenRouter API key" }
-    ]},
-    { value: "ai-gateway", label: "Vercel AI Gateway", hint: "API key", options: [
-      { value: "ai-gateway-api-key", label: "Vercel AI Gateway API key" }
-    ]},
-    { value: "moonshot", label: "Moonshot AI", hint: "Kimi K2 + Kimi Code", options: [
-      { value: "moonshot-api-key", label: "Moonshot AI API key" },
-      { value: "kimi-code-api-key", label: "Kimi Code API key" }
-    ]},
-    { value: "zai", label: "Z.AI (GLM 4.7)", hint: "API key", options: [
-      { value: "zai-api-key", label: "Z.AI (GLM 4.7) API key" }
-    ]},
-    { value: "minimax", label: "MiniMax", hint: "M2.1 (recommended)", options: [
-      { value: "minimax-api", label: "MiniMax M2.1" },
-      { value: "minimax-api-lightning", label: "MiniMax M2.1 Lightning" }
-    ]},
-    { value: "qwen", label: "Qwen", hint: "OAuth", options: [
-      { value: "qwen-portal", label: "Qwen OAuth" }
-    ]},
-    { value: "copilot", label: "Copilot", hint: "GitHub + local proxy", options: [
-      { value: "github-copilot", label: "GitHub Copilot (GitHub device login)" },
-      { value: "copilot-proxy", label: "Copilot Proxy (local)" }
-    ]},
-    { value: "synthetic", label: "Synthetic", hint: "Anthropic-compatible (multi-model)", options: [
-      { value: "synthetic-api-key", label: "Synthetic API key" }
-    ]},
-    { value: "opencode-zen", label: "OpenCode Zen", hint: "API key", options: [
-      { value: "opencode-zen", label: "OpenCode Zen (multi-model proxy)" }
-    ]}
+    {
+      value: "openai",
+      label: "OpenAI",
+      hint: "Codex OAuth + API key",
+      options: [
+        { value: "codex-cli", label: "OpenAI Codex OAuth (Codex CLI)" },
+        { value: "openai-codex", label: "OpenAI Codex (ChatGPT OAuth)" },
+        { value: "openai-api-key", label: "OpenAI API key" },
+      ],
+    },
+    {
+      value: "anthropic",
+      label: "Anthropic",
+      hint: "Claude Code CLI + API key",
+      options: [
+        { value: "claude-cli", label: "Anthropic token (Claude Code CLI)" },
+        { value: "token", label: "Anthropic token (paste setup-token)" },
+        { value: "apiKey", label: "Anthropic API key" },
+      ],
+    },
+    {
+      value: "google",
+      label: "Google",
+      hint: "Gemini API key + OAuth",
+      options: [
+        { value: "gemini-api-key", label: "Google Gemini API key" },
+        { value: "google-antigravity", label: "Google Antigravity OAuth" },
+        { value: "google-gemini-cli", label: "Google Gemini CLI OAuth" },
+      ],
+    },
+    {
+      value: "openrouter",
+      label: "OpenRouter",
+      hint: "API key",
+      options: [{ value: "openrouter-api-key", label: "OpenRouter API key" }],
+    },
+    {
+      value: "ai-gateway",
+      label: "Vercel AI Gateway",
+      hint: "API key",
+      options: [
+        { value: "ai-gateway-api-key", label: "Vercel AI Gateway API key" },
+      ],
+    },
+    {
+      value: "moonshot",
+      label: "Moonshot AI",
+      hint: "Kimi K2 + Kimi Code",
+      options: [
+        { value: "moonshot-api-key", label: "Moonshot AI API key" },
+        { value: "kimi-code-api-key", label: "Kimi Code API key" },
+      ],
+    },
+    {
+      value: "zai",
+      label: "Z.AI (GLM 4.7)",
+      hint: "API key",
+      options: [{ value: "zai-api-key", label: "Z.AI (GLM 4.7) API key" }],
+    },
+    {
+      value: "minimax",
+      label: "MiniMax",
+      hint: "M2.1 (recommended)",
+      options: [
+        { value: "minimax-api", label: "MiniMax M2.1" },
+        { value: "minimax-api-lightning", label: "MiniMax M2.1 Lightning" },
+      ],
+    },
+    {
+      value: "qwen",
+      label: "Qwen",
+      hint: "OAuth",
+      options: [{ value: "qwen-portal", label: "Qwen OAuth" }],
+    },
+    {
+      value: "copilot",
+      label: "Copilot",
+      hint: "GitHub + local proxy",
+      options: [
+        {
+          value: "github-copilot",
+          label: "GitHub Copilot (GitHub device login)",
+        },
+        { value: "copilot-proxy", label: "Copilot Proxy (local)" },
+      ],
+    },
+    {
+      value: "synthetic",
+      label: "Synthetic",
+      hint: "Anthropic-compatible (multi-model)",
+      options: [{ value: "synthetic-api-key", label: "Synthetic API key" }],
+    },
+    {
+      value: "opencode-zen",
+      label: "OpenCode Zen",
+      hint: "API key",
+      options: [
+        { value: "opencode-zen", label: "OpenCode Zen (multi-model proxy)" },
+      ],
+    },
   ];
 
   res.json({
@@ -464,7 +529,7 @@ function buildOnboardArgs(payload) {
     "--gateway-token",
     OPENCLAW_GATEWAY_TOKEN,
     "--flow",
-    payload.flow || "quickstart"
+    payload.flow || "quickstart",
   ];
 
   if (payload.authChoice) {
@@ -474,7 +539,7 @@ function buildOnboardArgs(payload) {
     const secret = (payload.authSecret || "").trim();
     const map = {
       "openai-api-key": "--openai-api-key",
-      "apiKey": "--anthropic-api-key",
+      apiKey: "--anthropic-api-key",
       "openrouter-api-key": "--openrouter-api-key",
       "ai-gateway-api-key": "--ai-gateway-api-key",
       "moonshot-api-key": "--moonshot-api-key",
@@ -484,7 +549,7 @@ function buildOnboardArgs(payload) {
       "minimax-api": "--minimax-api-key",
       "minimax-api-lightning": "--minimax-api-key",
       "synthetic-api-key": "--synthetic-api-key",
-      "opencode-zen": "--opencode-zen-api-key"
+      "opencode-zen": "--opencode-zen-api-key",
     };
     const flag = map[payload.authChoice];
     if (flag && secret) {
@@ -528,116 +593,170 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
   try {
     if (isConfigured()) {
       await ensureGatewayRunning();
-      return res.json({ ok: true, output: "Already configured.\nUse Reset setup if you want to rerun onboarding.\n" });
+      return res.json({
+        ok: true,
+        output:
+          "Already configured.\nUse Reset setup if you want to rerun onboarding.\n",
+      });
     }
 
-  fs.mkdirSync(STATE_DIR, { recursive: true });
-  fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
-  const payload = req.body || {};
-  const onboardArgs = buildOnboardArgs(payload);
-  const onboard = await runCmd(OPENCLAW_NODE, clawArgs(onboardArgs));
+    const payload = req.body || {};
+    const onboardArgs = buildOnboardArgs(payload);
+    const onboard = await runCmd(OPENCLAW_NODE, clawArgs(onboardArgs));
 
-  let extra = "";
+    let extra = "";
 
-  const ok = onboard.code === 0 && isConfigured();
+    const ok = onboard.code === 0 && isConfigured();
 
-  // Optional channel setup (only after successful onboarding, and only if the installed CLI supports it).
-  if (ok) {
-    // Ensure gateway token is written into config so the browser UI can authenticate reliably.
-    // (We also enforce loopback bind since the wrapper proxies externally.)
-    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.mode", "token"]));
-    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.token", OPENCLAW_GATEWAY_TOKEN]));
-    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
-    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
+    // Optional channel setup (only after successful onboarding, and only if the installed CLI supports it).
+    if (ok) {
+      // Ensure gateway token is written into config so the browser UI can authenticate reliably.
+      // (We also enforce loopback bind since the wrapper proxies externally.)
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "gateway.auth.mode", "token"]),
+      );
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "gateway.auth.token", OPENCLAW_GATEWAY_TOKEN]),
+      );
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "gateway.bind", "loopback"]),
+      );
+      await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]),
+      );
 
-    const channelsHelp = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "add", "--help"]));
-    const helpText = channelsHelp.output || "";
+      const channelsHelp = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["channels", "add", "--help"]),
+      );
+      const helpText = channelsHelp.output || "";
 
-    const supports = (name) => helpText.includes(name);
+      const supports = (name) => helpText.includes(name);
 
-    if (payload.telegramToken?.trim()) {
-      if (!supports("telegram")) {
-        extra += "\n[telegram] skipped (this openclaw build does not list telegram in `channels add --help`)\n";
-      } else {
-        // Avoid `channels add` here (it has proven flaky across builds); write config directly.
-        const token = payload.telegramToken.trim();
-        const cfgObj = {
-          enabled: true,
-          dmPolicy: "pairing",
-          botToken: token,
-          groupPolicy: "allowlist",
-          streamMode: "partial",
-        };
-        const set = await runCmd(
-          OPENCLAW_NODE,
-          clawArgs(["config", "set", "--json", "channels.telegram", JSON.stringify(cfgObj)]),
-        );
-        const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.telegram"]));
-        extra += `\n[telegram config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
-        extra += `\n[telegram verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
+      if (payload.telegramToken?.trim()) {
+        if (!supports("telegram")) {
+          extra +=
+            "\n[telegram] skipped (this openclaw build does not list telegram in `channels add --help`)\n";
+        } else {
+          // Avoid `channels add` here (it has proven flaky across builds); write config directly.
+          const token = payload.telegramToken.trim();
+          const cfgObj = {
+            enabled: true,
+            dmPolicy: "pairing",
+            botToken: token,
+            groupPolicy: "allowlist",
+            streamMode: "partial",
+          };
+          const set = await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "set",
+              "--json",
+              "channels.telegram",
+              JSON.stringify(cfgObj),
+            ]),
+          );
+          const get = await runCmd(
+            OPENCLAW_NODE,
+            clawArgs(["config", "get", "channels.telegram"]),
+          );
+          extra += `\n[telegram config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
+          extra += `\n[telegram verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
+        }
       }
-    }
 
-    if (payload.discordToken?.trim()) {
-      if (!supports("discord")) {
-        extra += "\n[discord] skipped (this openclaw build does not list discord in `channels add --help`)\n";
-      } else {
-        const token = payload.discordToken.trim();
-        const cfgObj = {
-          enabled: true,
-          token,
-          groupPolicy: "allowlist",
-          dm: {
-            policy: "pairing",
-          },
-        };
-        const set = await runCmd(
-          OPENCLAW_NODE,
-          clawArgs(["config", "set", "--json", "channels.discord", JSON.stringify(cfgObj)]),
-        );
-        const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.discord"]));
-        extra += `\n[discord config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
-        extra += `\n[discord verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
+      if (payload.discordToken?.trim()) {
+        if (!supports("discord")) {
+          extra +=
+            "\n[discord] skipped (this openclaw build does not list discord in `channels add --help`)\n";
+        } else {
+          const token = payload.discordToken.trim();
+          const cfgObj = {
+            enabled: true,
+            token,
+            groupPolicy: "allowlist",
+            dm: {
+              policy: "pairing",
+            },
+          };
+          const set = await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "set",
+              "--json",
+              "channels.discord",
+              JSON.stringify(cfgObj),
+            ]),
+          );
+          const get = await runCmd(
+            OPENCLAW_NODE,
+            clawArgs(["config", "get", "channels.discord"]),
+          );
+          extra += `\n[discord config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
+          extra += `\n[discord verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
+        }
       }
-    }
 
-    if (payload.slackBotToken?.trim() || payload.slackAppToken?.trim()) {
-      if (!supports("slack")) {
-        extra += "\n[slack] skipped (this openclaw build does not list slack in `channels add --help`)\n";
-      } else {
-        const cfgObj = {
-          enabled: true,
-          botToken: payload.slackBotToken?.trim() || undefined,
-          appToken: payload.slackAppToken?.trim() || undefined,
-        };
-        const set = await runCmd(
-          OPENCLAW_NODE,
-          clawArgs(["config", "set", "--json", "channels.slack", JSON.stringify(cfgObj)]),
-        );
-        const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.slack"]));
-        extra += `\n[slack config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
-        extra += `\n[slack verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
+      if (payload.slackBotToken?.trim() || payload.slackAppToken?.trim()) {
+        if (!supports("slack")) {
+          extra +=
+            "\n[slack] skipped (this openclaw build does not list slack in `channels add --help`)\n";
+        } else {
+          const cfgObj = {
+            enabled: true,
+            botToken: payload.slackBotToken?.trim() || undefined,
+            appToken: payload.slackAppToken?.trim() || undefined,
+          };
+          const set = await runCmd(
+            OPENCLAW_NODE,
+            clawArgs([
+              "config",
+              "set",
+              "--json",
+              "channels.slack",
+              JSON.stringify(cfgObj),
+            ]),
+          );
+          const get = await runCmd(
+            OPENCLAW_NODE,
+            clawArgs(["config", "get", "channels.slack"]),
+          );
+          extra += `\n[slack config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
+          extra += `\n[slack verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
+        }
       }
+
+      // Apply changes immediately.
+      await restartGateway();
     }
 
-    // Apply changes immediately.
-    await restartGateway();
-  }
-
-  return res.status(ok ? 200 : 500).json({
-    ok,
-    output: `${onboard.output}${extra}`,
-  });
+    return res.status(ok ? 200 : 500).json({
+      ok,
+      output: `${onboard.output}${extra}`,
+    });
   } catch (err) {
     console.error("[/setup/api/run] error:", err);
-    return res.status(500).json({ ok: false, output: `Internal error: ${String(err)}` });
+    return res
+      .status(500)
+      .json({ ok: false, output: `Internal error: ${String(err)}` });
   }
 });
 
 app.get("/setup/api/debug", requireSetupAuth, async (_req, res) => {
   const v = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
-  const help = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "add", "--help"]));
+  const help = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["channels", "add", "--help"]),
+  );
   res.json({
     wrapper: {
       node: process.version,
@@ -697,11 +816,16 @@ app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
   try {
     if (cmd === "gateway.restart") {
       await restartGateway();
-      return res.json({ ok: true, output: "Gateway restarted (wrapper-managed).\n" });
+      return res.json({
+        ok: true,
+        output: "Gateway restarted (wrapper-managed).\n",
+      });
     }
     if (cmd === "gateway.stop") {
       if (gatewayProc) {
-        try { gatewayProc.kill("SIGTERM"); } catch {}
+        try {
+          gatewayProc.kill("SIGTERM");
+        } catch {}
         await sleep(750);
         gatewayProc = null;
       }
@@ -709,34 +833,55 @@ app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
     }
     if (cmd === "gateway.start") {
       const r = await ensureGatewayRunning();
-      return res.json({ ok: Boolean(r.ok), output: r.ok ? "Gateway started.\n" : `Gateway not started: ${r.reason}\n` });
+      return res.json({
+        ok: Boolean(r.ok),
+        output: r.ok ? "Gateway started.\n" : `Gateway not started: ${r.reason}\n`,
+      });
     }
 
     if (cmd === "openclaw.version") {
       const r = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+      return res
+        .status(r.code === 0 ? 200 : 500)
+        .json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.status") {
       const r = await runCmd(OPENCLAW_NODE, clawArgs(["status"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+      return res
+        .status(r.code === 0 ? 200 : 500)
+        .json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.health") {
       const r = await runCmd(OPENCLAW_NODE, clawArgs(["health"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+      return res
+        .status(r.code === 0 ? 200 : 500)
+        .json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.doctor") {
       const r = await runCmd(OPENCLAW_NODE, clawArgs(["doctor"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+      return res
+        .status(r.code === 0 ? 200 : 500)
+        .json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.logs.tail") {
-      const lines = Math.max(50, Math.min(1000, Number.parseInt(arg || "200", 10) || 200));
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["logs", "--tail", String(lines)]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+      const lines = Math.max(
+        50,
+        Math.min(1000, Number.parseInt(arg || "200", 10) || 200),
+      );
+      const r = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["logs", "--tail", String(lines)]),
+      );
+      return res
+        .status(r.code === 0 ? 200 : 500)
+        .json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.config.get") {
       if (!arg) return res.status(400).json({ ok: false, error: "Missing config path" });
       const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", arg]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+      return res
+        .status(r.code === 0 ? 200 : 500)
+        .json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
 
     return res.status(400).json({ ok: false, error: "Unhandled command" });
@@ -790,8 +935,13 @@ app.post("/setup/api/pairing/approve", requireSetupAuth, async (req, res) => {
   if (!channel || !code) {
     return res.status(400).json({ ok: false, error: "Missing channel or code" });
   }
-  const r = await runCmd(OPENCLAW_NODE, clawArgs(["pairing", "approve", String(channel), String(code)]));
-  return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: r.output });
+  const r = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["pairing", "approve", String(channel), String(code)]),
+  );
+  return res
+    .status(r.code === 0 ? 200 : 500)
+    .json({ ok: r.code === 0, output: r.output });
 });
 
 app.post("/setup/api/reset", requireSetupAuth, async (_req, res) => {
@@ -899,12 +1049,16 @@ app.post("/setup/import", requireSetupAuth, async (req, res) => {
       return res
         .status(400)
         .type("text/plain")
-        .send("Import is only supported when OPENCLAW_STATE_DIR and OPENCLAW_WORKSPACE_DIR are under /data (Railway volume).\n");
+        .send(
+          "Import is only supported when OPENCLAW_STATE_DIR and OPENCLAW_WORKSPACE_DIR are under /data (Railway volume).\n",
+        );
     }
 
     // Stop gateway before restore so we don't overwrite live files.
     if (gatewayProc) {
-      try { gatewayProc.kill("SIGTERM"); } catch {}
+      try {
+        gatewayProc.kill("SIGTERM");
+      } catch {}
       await sleep(750);
       gatewayProc = null;
     }
@@ -924,13 +1078,12 @@ app.post("/setup/import", requireSetupAuth, async (req, res) => {
       gzip: true,
       strict: true,
       onwarn: () => {},
-      filter: (p) => {
-        // Allow only paths that look safe.
-        return looksSafeTarPath(p);
-      },
+      filter: (p) => looksSafeTarPath(p),
     });
 
-    try { fs.rmSync(tmpPath, { force: true }); } catch {}
+    try {
+      fs.rmSync(tmpPath, { force: true });
+    } catch {}
 
     // Restart gateway after restore.
     if (isConfigured()) {
@@ -981,7 +1134,13 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   if (!SETUP_PASSWORD) {
     console.warn("[wrapper] WARNING: SETUP_PASSWORD is not set; /setup will error.");
   }
-  // Don't start gateway unless configured; proxy will ensure it starts.
+
+  // NEW: start gateway proactively (avoids "gateway closed (1006)" until first proxied request)
+  if (isConfigured()) {
+    ensureGatewayRunning().catch((err) => {
+      console.error("[wrapper] gateway auto-start failed:", err);
+    });
+  }
 });
 
 server.on("upgrade", async (req, socket, head) => {
